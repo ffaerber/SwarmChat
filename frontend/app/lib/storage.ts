@@ -26,42 +26,59 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function putMessage(msg: ChatMessage): Promise<void> {
+async function withDB<T>(fn: (db: IDBDatabase) => Promise<T>): Promise<T> {
   const db = await openDB();
-  await new Promise<void>((res, rej) => {
-    const tx = db.transaction(STORE_MESSAGES, "readwrite");
-    tx.objectStore(STORE_MESSAGES).put(msg);
-    tx.oncomplete = () => res();
-    tx.onerror = () => rej(tx.error);
-  });
+  try {
+    return await fn(db);
+  } finally {
+    db.close();
+  }
 }
 
-export async function listMessages(): Promise<ChatMessage[]> {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction(STORE_MESSAGES, "readonly");
-    const req = tx.objectStore(STORE_MESSAGES).getAll();
-    req.onsuccess = () => res((req.result as ChatMessage[]) ?? []);
-    req.onerror = () => rej(req.error);
-  });
+export function putMessage(msg: ChatMessage): Promise<void> {
+  return withDB(
+    (db) =>
+      new Promise<void>((res, rej) => {
+        const tx = db.transaction(STORE_MESSAGES, "readwrite");
+        tx.objectStore(STORE_MESSAGES).put(msg);
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      }),
+  );
 }
 
-export async function blockAddress(address: string): Promise<void> {
-  const db = await openDB();
-  await new Promise<void>((res, rej) => {
-    const tx = db.transaction(STORE_BLOCKLIST, "readwrite");
-    tx.objectStore(STORE_BLOCKLIST).put({ address });
-    tx.oncomplete = () => res();
-    tx.onerror = () => rej(tx.error);
-  });
+export function listMessages(): Promise<ChatMessage[]> {
+  return withDB(
+    (db) =>
+      new Promise<ChatMessage[]>((res, rej) => {
+        const tx = db.transaction(STORE_MESSAGES, "readonly");
+        const req = tx.objectStore(STORE_MESSAGES).getAll();
+        req.onsuccess = () => res((req.result as ChatMessage[]) ?? []);
+        req.onerror = () => rej(req.error);
+      }),
+  );
 }
 
-export async function listBlocked(): Promise<string[]> {
-  const db = await openDB();
-  return new Promise((res, rej) => {
-    const tx = db.transaction(STORE_BLOCKLIST, "readonly");
-    const req = tx.objectStore(STORE_BLOCKLIST).getAllKeys();
-    req.onsuccess = () => res((req.result as string[]) ?? []);
-    req.onerror = () => rej(req.error);
-  });
+export function blockAddress(address: string): Promise<void> {
+  return withDB(
+    (db) =>
+      new Promise<void>((res, rej) => {
+        const tx = db.transaction(STORE_BLOCKLIST, "readwrite");
+        tx.objectStore(STORE_BLOCKLIST).put({ address });
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      }),
+  );
+}
+
+export function listBlocked(): Promise<string[]> {
+  return withDB(
+    (db) =>
+      new Promise<string[]>((res, rej) => {
+        const tx = db.transaction(STORE_BLOCKLIST, "readonly");
+        const req = tx.objectStore(STORE_BLOCKLIST).getAllKeys();
+        req.onsuccess = () => res((req.result as string[]) ?? []);
+        req.onerror = () => rej(req.error);
+      }),
+  );
 }
