@@ -73,6 +73,17 @@ test-gas: ## Run tests with gas report
 coverage: ## Run test coverage
 	forge coverage
 
+.PHONY: test-frontend
+test-frontend: ## Run frontend tests (mock-bee integration)
+	cd frontend && npm test
+
+.PHONY: test-frontend-watch
+test-frontend-watch: ## Run frontend tests in watch mode
+	cd frontend && npm run test:watch
+
+.PHONY: test-all
+test-all: test test-frontend ## Run contract + frontend tests
+
 # ============================================================
 #  Build
 # ============================================================
