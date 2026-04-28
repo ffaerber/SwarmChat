@@ -32,11 +32,22 @@ export interface SubscribeArgs {
   onClose?: () => void
 }
 
+export interface SubscriptionHandle {
+  cancel: () => void
+}
+
+/** Subset of Transport that downstream layers (Reliability) depend on. */
+export interface TransportLike {
+  send(args: SendArgs): Promise<Envelope>
+  retransmit(env: Envelope, to: PeerProfile): Promise<void>
+  subscribe(args: SubscribeArgs): SubscriptionHandle
+}
+
 /**
  * Wraps bee-js PSS with the SwarmChat envelope: sign on send, verify on
  * receipt, drop blocked senders, drop duplicates.
  */
-export class Transport {
+export class Transport implements TransportLike {
   private readonly dedup = new Set<string>()
   private readonly dedupCapacity: number
 
@@ -54,12 +65,23 @@ export class Transport {
       },
       this.opts.signMessage,
     )
+    await this.publish(env, args.to)
+    // Record our own send so we don't reprocess on echo.
+    this.markSeen(env.msgId)
+    return env
+  }
 
-    const topic = Topic.fromString(inboxTopic(args.to.wallet))
-    const target = args.to.swarmOverlay.slice(2, 6) // first 2 bytes
-    const recipient = args.to.pssPublicKey.startsWith('0x')
-      ? args.to.pssPublicKey.slice(2)
-      : args.to.pssPublicKey
+  /** Re-publish a previously signed envelope (same msgId/sig) for retries. */
+  async retransmit(env: Envelope, to: PeerProfile): Promise<void> {
+    await this.publish(env, to)
+  }
+
+  private async publish(env: Envelope, to: PeerProfile): Promise<void> {
+    const topic = Topic.fromString(inboxTopic(to.wallet))
+    const target = to.swarmOverlay.slice(2, 6) // first 2 bytes
+    const recipient = to.pssPublicKey.startsWith('0x')
+      ? to.pssPublicKey.slice(2)
+      : to.pssPublicKey
 
     await this.opts.bee.pssSend(
       this.opts.postageBatchId,
@@ -68,9 +90,6 @@ export class Transport {
       encodeEnvelope(env),
       recipient,
     )
-    // Record our own send so we don't reprocess on echo.
-    this.markSeen(env.msgId)
-    return env
   }
 
   subscribe(args: SubscribeArgs): PssSubscription {
