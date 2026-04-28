@@ -16,6 +16,9 @@ export interface UnsignedEnvelope {
   msgId: Hex
   from: Hex
   to: Hex
+  /** Sender's feed owner address. Recipients cache this to read the
+   *  sender's outbox feed for offline catch-up (spec §6, store-and-forward). */
+  feedOwner: Hex
   ts: number
   nonce: Hex
   payload: unknown

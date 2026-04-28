@@ -30,15 +30,20 @@ async function world(): Promise<World> {
   const aliceBee = new Bee(broker.url('alice-bee'))
   const bobBee = new Bee(broker.url('bob-bee'))
 
+  const aliceFeed = ('0x' + 'a1'.repeat(20)) as Hex
+  const bobFeed = ('0x' + 'b1'.repeat(20)) as Hex
+
   const aliceTransport = new Transport({
     bee: aliceBee,
     selfWallet: aliceAcc.address,
+    selfFeedOwner: aliceFeed,
     signMessage: m => aliceAcc.signMessage({ message: m }),
     postageBatchId: await buyStamp(broker.url('alice-bee')),
   })
   const bobTransport = new Transport({
     bee: bobBee,
     selfWallet: bobAcc.address,
+    selfFeedOwner: bobFeed,
     signMessage: m => bobAcc.signMessage({ message: m }),
     postageBatchId: await buyStamp(broker.url('bob-bee')),
   })

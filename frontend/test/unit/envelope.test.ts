@@ -54,28 +54,42 @@ describe('makeMsgId', () => {
   })
 })
 
+const ALICE_FEED = ('0x' + 'a1'.repeat(20)) as Hex
+const BOB_FEED = ('0x' + 'b1'.repeat(20)) as Hex
+const C_FEED = ('0x' + 'c1'.repeat(20)) as Hex
+
 describe('signEnvelope / verifyEnvelope', () => {
   it('round-trips a valid signature', async () => {
     const env = await signEnvelope(
-      { from: alice.address, to: bob.address, type: 'msg', payload: { text: 'hi' } },
+      { from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: { text: 'hi' } },
       aliceSign,
     )
     expect(env.sig).toMatch(/^0x[0-9a-f]+$/i)
+    expect(env.feedOwner).toBe(ALICE_FEED)
     expect(await verifyEnvelope(env)).toBe(true)
   })
 
   it('rejects a tampered payload', async () => {
     const env = await signEnvelope(
-      { from: alice.address, to: bob.address, type: 'msg', payload: { text: 'hi' } },
+      { from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: { text: 'hi' } },
       aliceSign,
     )
     const tampered = { ...env, payload: { text: 'bye' } }
     expect(await verifyEnvelope(tampered)).toBe(false)
   })
 
+  it('rejects a tampered feedOwner', async () => {
+    const env = await signEnvelope(
+      { from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: {} },
+      aliceSign,
+    )
+    const tampered = { ...env, feedOwner: BOB_FEED }
+    expect(await verifyEnvelope(tampered)).toBe(false)
+  })
+
   it('rejects spoofed `from` (signer != claimed sender)', async () => {
     const env = await signEnvelope(
-      { from: bob.address, to: alice.address, type: 'msg', payload: { text: 'spoof' } },
+      { from: bob.address, to: alice.address, feedOwner: BOB_FEED, type: 'msg', payload: { text: 'spoof' } },
       aliceSign, // signed by alice but claims to be from bob
     )
     expect(await verifyEnvelope(env)).toBe(false)
@@ -85,7 +99,7 @@ describe('signEnvelope / verifyEnvelope', () => {
     const ts = 1737000000000
     const nonce: Hex = '0xdeadbeefdeadbeefdeadbeefdeadbeef'
     const env = await signEnvelope(
-      { from: alice.address, to: bob.address, type: 'msg', payload: {}, ts, nonce },
+      { from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: {}, ts, nonce },
       aliceSign,
     )
     expect(env.msgId).toBe(makeMsgId(alice.address, nonce, ts))
@@ -96,11 +110,11 @@ describe('signEnvelope / verifyEnvelope', () => {
     const nonce: Hex = '0x' + '11'.repeat(16) as Hex
     const fixed = { type: 'msg' as const, payload: {}, ts, nonce }
 
-    const a = await signEnvelope({ from: alice.address, to: bob.address, ...fixed }, aliceSign)
+    const a = await signEnvelope({ from: alice.address, to: bob.address, feedOwner: ALICE_FEED, ...fixed }, aliceSign)
     const fresh = generatePrivateKey()
     const c = privateKeyToAccount(fresh)
     const cSign = (m: string) => c.signMessage({ message: m })
-    const b = await signEnvelope({ from: c.address, to: bob.address, ...fixed }, cSign)
+    const b = await signEnvelope({ from: c.address, to: bob.address, feedOwner: C_FEED, ...fixed }, cSign)
 
     expect(a.sig).not.toBe(b.sig)
   })

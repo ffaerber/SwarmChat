@@ -58,6 +58,7 @@ export function canonicalize(value: unknown): string {
 export interface BuildEnvelopeArgs {
   from: Hex
   to: Hex
+  feedOwner: Hex
   type: Envelope['type']
   payload: unknown
   ts?: number
@@ -75,6 +76,7 @@ export async function signEnvelope(args: BuildEnvelopeArgs, signMessage: SignMes
     msgId,
     from: args.from,
     to: args.to,
+    feedOwner: args.feedOwner,
     ts,
     nonce,
     payload: args.payload,

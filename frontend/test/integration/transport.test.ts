@@ -35,15 +35,20 @@ async function setup(): Promise<Setup> {
   const aliceStamp = await buyStamp(broker.url('alice-bee'))
   const bobStamp = await buyStamp(broker.url('bob-bee'))
 
+  const aliceFeed = ('0x' + 'a1'.repeat(20)) as Hex
+  const bobFeed = ('0x' + 'b1'.repeat(20)) as Hex
+
   const alice = new Transport({
     bee: aliceBee,
     selfWallet: aliceAccount.address,
+    selfFeedOwner: aliceFeed,
     signMessage: m => aliceAccount.signMessage({ message: m }),
     postageBatchId: aliceStamp,
   })
   const bob = new Transport({
     bee: bobBee,
     selfWallet: bobAccount.address,
+    selfFeedOwner: bobFeed,
     signMessage: m => bobAccount.signMessage({ message: m }),
     postageBatchId: bobStamp,
   })
@@ -130,6 +135,7 @@ describe('Transport (alice <-> bob via mock-bee)', () => {
       type: 'msg',
       from: '0xdEAD000000000000000000000000000000000000' as Hex,
       to: s.bobWallet,
+      feedOwner: '0xdEAD000000000000000000000000000000000000' as Hex,
       ts: Date.now(),
       nonce: '0x' + 'aa'.repeat(16) as Hex,
       msgId: ('0x' + 'bb'.repeat(32)) as Hex,
@@ -192,6 +198,7 @@ describe('Transport (alice <-> bob via mock-bee)', () => {
     const blocked = new Transport({
       bee: bobBee,
       selfWallet: bobAccount.address,
+      selfFeedOwner: ('0x' + 'b1'.repeat(20)) as Hex,
       signMessage: m => bobAccount.signMessage({ message: m }),
       postageBatchId: await buyStamp(s.broker.url('bob-bee')),
       blocklist: new Set([aliceAccount.address.toLowerCase() as Hex]),

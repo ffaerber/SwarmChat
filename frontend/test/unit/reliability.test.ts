@@ -32,6 +32,7 @@ class FakeTransport implements TransportLike {
       msgId: ('0x' + this.msgCounter.toString(16).padStart(64, '0')) as Hex,
       from: ALICE,
       to: args.to.wallet,
+      feedOwner: ('0x' + 'a1'.repeat(20)) as Hex,
       ts: Date.now(),
       nonce: ('0x' + 'ee'.repeat(16)) as Hex,
       payload: args.payload,
@@ -103,6 +104,7 @@ describe('Reliability (fake transport, fake timers)', () => {
       msgId: '0x' + '99'.repeat(32) as Hex,
       from: BOB,
       to: ALICE,
+      feedOwner: '0x' + 'b1'.repeat(20) as Hex,
       ts: Date.now(),
       nonce: '0x' + '00'.repeat(16) as Hex,
       payload: { ackMsgId: entry.envelope.msgId },
@@ -124,7 +126,8 @@ describe('Reliability (fake transport, fake timers)', () => {
 
     const ack: Envelope = {
       v: 1, type: 'ack', msgId: '0x' + '99'.repeat(32) as Hex,
-      from: BOB, to: ALICE, ts: 1, nonce: '0x' + '00'.repeat(16) as Hex,
+      from: BOB, to: ALICE, feedOwner: '0x' + 'b1'.repeat(20) as Hex,
+      ts: 1, nonce: '0x' + '00'.repeat(16) as Hex,
       payload: { ackMsgId: entry.envelope.msgId },
       sig: '0x' + '11'.repeat(65) as Hex,
     }
@@ -160,8 +163,8 @@ describe('Reliability (fake transport, fake timers)', () => {
     const sentEnv: Envelope = {
       v: 1, type: 'msg',
       msgId: '0x' + '77'.repeat(32) as Hex,
-      from: ALICE, to: BOB, ts: 1,
-      nonce: '0x' + '00'.repeat(16) as Hex,
+      from: ALICE, to: BOB, feedOwner: '0x' + 'a1'.repeat(20) as Hex,
+      ts: 1, nonce: '0x' + '00'.repeat(16) as Hex,
       payload: { text: 'persisted' },
       sig: '0x' + '11'.repeat(65) as Hex,
     }
@@ -196,7 +199,8 @@ describe('Reliability (fake transport, fake timers)', () => {
     const entry = await r.send({ to: bobProfile, type: 'msg', payload: {} })
     await transport.deliver({
       v: 1, type: 'ack', msgId: '0x' + '99'.repeat(32) as Hex,
-      from: BOB, to: ALICE, ts: 1, nonce: '0x' + '00'.repeat(16) as Hex,
+      from: BOB, to: ALICE, feedOwner: '0x' + 'b1'.repeat(20) as Hex,
+      ts: 1, nonce: '0x' + '00'.repeat(16) as Hex,
       payload: { ackMsgId: entry.envelope.msgId },
       sig: '0x' + '11'.repeat(65) as Hex,
     })
@@ -220,8 +224,8 @@ describe('Reliability (fake transport, fake timers)', () => {
     await transport.deliver({
       v: 1, type: 'msg',
       msgId: '0x' + '88'.repeat(32) as Hex,
-      from: ALICE, to: BOB, ts: 1,
-      nonce: '0x' + '00'.repeat(16) as Hex,
+      from: ALICE, to: BOB, feedOwner: '0x' + 'a1'.repeat(20) as Hex,
+      ts: 1, nonce: '0x' + '00'.repeat(16) as Hex,
       payload: { text: 'hi' },
       sig: '0x' + '11'.repeat(65) as Hex,
     })

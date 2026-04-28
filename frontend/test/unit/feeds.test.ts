@@ -79,7 +79,7 @@ class FakeBeeFeed implements FeedsBee {
 
 async function makeMsg(text: string, ts: number): Promise<Envelope> {
   return signEnvelope(
-    { from: aliceWallet, to: bobWallet, type: 'msg', payload: { text }, ts },
+    { from: aliceWallet, to: bobWallet, feedOwner: aliceFeedOwner, type: 'msg', payload: { text }, ts },
     aliceSign,
   )
 }
@@ -152,7 +152,7 @@ describe('Feeds', () => {
     const aliceToBob = await makeMsg('to bob', 1_000)
     const carol = '0xC0a01000000000000000000000000000000A0000' as Hex
     const aliceToCarol = await signEnvelope(
-      { from: aliceWallet, to: carol, type: 'msg', payload: { text: 'to carol' }, ts: 1_000 },
+      { from: aliceWallet, to: carol, feedOwner: aliceFeedOwner, type: 'msg', payload: { text: 'to carol' }, ts: 1_000 },
       aliceSign,
     )
     await alice.writeOutbox(bobWallet, aliceToBob)

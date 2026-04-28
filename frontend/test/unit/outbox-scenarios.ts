@@ -9,6 +9,7 @@ export function fakeEntry(msgId: Hex, status: OutboxEntry['status'] = 'sent'): O
     msgId,
     from: ('0x' + 'aa'.repeat(20)) as Hex,
     to: ('0x' + 'bb'.repeat(20)) as Hex,
+    feedOwner: ('0x' + 'a1'.repeat(20)) as Hex,
     ts: 1,
     nonce: ('0x' + '00'.repeat(16)) as Hex,
     payload: { text: 'hi' },

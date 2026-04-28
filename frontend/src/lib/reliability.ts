@@ -1,5 +1,6 @@
 import type { TransportLike } from './transport'
 import type { OutboxEntry, OutboxStore } from './outbox'
+import type { Feeds } from './feeds'
 import type { Envelope, EnvelopeType, Hex, PeerProfile } from './types'
 
 /**
@@ -25,6 +26,10 @@ export interface ReliabilityOptions {
   backoff?: number[]
   /** Lookup peer profile (for auto-acking incoming msgs). Optional. */
   resolveProfile?: (wallet: Hex) => Promise<PeerProfile | null> | PeerProfile | null
+  /** If provided, every outgoing 'msg' is also written to the per-recipient
+   *  outbox feed for store-and-forward. Errors are swallowed: PSS is the
+   *  primary path, feed write is best-effort. */
+  feeds?: Feeds
   /** Hooks (mostly for tests). */
   now?: () => number
   setTimeoutFn?: (cb: () => void, ms: number) => TimeoutHandle
@@ -90,6 +95,13 @@ export class Reliability {
       type: args.type,
       payload: args.payload,
     })
+
+    // Mirror 'msg' envelopes to the outbox feed for offline recipients.
+    if (this.opts.feeds && args.type === 'msg') {
+      this.opts.feeds.writeOutbox(args.to.wallet, env).catch(() => {
+        // Best-effort: PSS already handled the live delivery.
+      })
+    }
 
     const ts = this.now()
     const wait = this.backoff[0]

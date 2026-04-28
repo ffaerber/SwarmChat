@@ -12,6 +12,9 @@ import type { Envelope, EnvelopeType, Hex, PeerProfile, SignMessage } from './ty
 export interface TransportOptions {
   bee: Bee
   selfWallet: Hex
+  /** Sender's feed-owner address; embedded in every outgoing envelope so
+   *  recipients can find this user's outbox feed. */
+  selfFeedOwner: Hex
   signMessage: SignMessage
   postageBatchId: string
   /** Drop messages from these wallets after sig verification. */
@@ -60,6 +63,7 @@ export class Transport implements TransportLike {
       {
         from: this.opts.selfWallet,
         to: args.to.wallet,
+        feedOwner: this.opts.selfFeedOwner,
         type: args.type,
         payload: args.payload,
       },
