@@ -45,6 +45,8 @@ export class MockBeeBroker {
   private servers = new Map<string, Server>()
   private subs: Subscription[] = []
   private stamps = new Map<string, Stamp[]>()
+  /** Shared content store; references are global like in the real network. */
+  private bzz = new Map<string, { body: Buffer; contentType: string; name: string }>()
 
   async addNode(id: string): Promise<MockNode> {
     if (this.nodes.has(id)) throw new Error(`node "${id}" already exists`)
@@ -125,6 +127,35 @@ export class MockBeeBroker {
       this.deliver(topic, target, body)
       res.json({})
     })
+
+    // Minimal /bzz upload+download. Real bee chunks + manifests files; the
+    // mock just stores the bytes verbatim and returns a deterministic
+    // reference (sha256 of the body, doubled for encrypted uploads to match
+    // bee's hash+key encoding length).
+    app.post('/bzz', (req, res) => {
+      const body = req.body as Buffer
+      // bee-js sends swarm-encrypt as a request header (lowercase in Express).
+      const encrypt = req.headers['swarm-encrypt'] === 'true'
+      const hash = createHash('sha256').update(body).digest('hex')
+      const ref = encrypt ? hash + hash : hash
+      const contentType = (req.headers['content-type'] as string | undefined)
+        ?? 'application/octet-stream'
+      const name = typeof req.query.name === 'string' ? req.query.name : 'file'
+      this.bzz.set(ref, { body, contentType, name })
+      res.json({ reference: ref })
+    })
+
+    const serveBzz = (req: express.Request, res: express.Response) => {
+      const ref = req.params.ref.toLowerCase()
+      const entry = this.bzz.get(ref)
+      if (!entry) return res.status(404).end()
+      res.setHeader('Content-Type', entry.contentType)
+      res.setHeader('Content-Disposition', `attachment; filename="${entry.name}"`)
+      res.send(entry.body)
+    }
+    app.get('/bzz/:ref', serveBzz)
+    app.get('/bzz/:ref/', serveBzz)
+    app.get('/bzz/:ref/*', serveBzz)
 
     const server = createServer(app)
     const wss = new WebSocketServer({ noServer: true })

@@ -1,23 +1,50 @@
-import type { Hex } from './types'
+import type { Hex, SwarmRef } from './types'
 
 export type MessageDirection = 'in' | 'out'
 export type MessageStatus = 'sent' | 'delivered' | 'read' | 'failed'
 
-export interface ChatMessage {
+interface ChatMessageBase {
   msgId: Hex
   /** The other party's wallet (peer in the conversation). */
   peer: Hex
   direction: MessageDirection
-  text: string
   ts: number
   /** Outbound only — reflects the Reliability layer's view. */
   status?: MessageStatus
 }
 
+export interface TextMessage extends ChatMessageBase {
+  kind: 'text'
+  text: string
+}
+
+export interface MediaMessage extends ChatMessageBase {
+  kind: 'image' | 'video' | 'file'
+  ref: SwarmRef
+  mime: string
+  size: number
+  name?: string
+  w?: number
+  h?: number
+  durationMs?: number
+}
+
+export type ChatMessage = TextMessage | MediaMessage
+
 export interface ConversationSummary {
   peer: Hex
   lastMessage: ChatMessage
   unread: number
+}
+
+/** Short text preview for chat-list rows. */
+export function previewOf(msg: ChatMessage): string {
+  switch (msg.kind) {
+    case 'text': return msg.text
+    case 'image': return msg.name ? `📷 ${msg.name}` : '📷 Photo'
+    case 'video': return msg.name ? `🎬 ${msg.name}` : '🎬 Video'
+    case 'file':  return `📎 ${msg.name}`
+  }
 }
 
 export interface MessagesStore {

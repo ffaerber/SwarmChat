@@ -7,16 +7,21 @@ import { Feeds } from '../lib/feeds'
 import { IndexedDBOutbox } from '../lib/idb-outbox'
 import { IndexedDBMessages } from '../lib/idb-messages'
 import { deriveFeedKey } from '../lib/feed-key'
+import { uploadMedia, MediaResolver, classifyMime } from '../lib/media'
+import type { UploadResult } from '../lib/media'
 import { useBeeContext } from '../hooks/BeeContext'
 import { CONTACT_REGISTRY_ABI, CONTACT_REGISTRY_ADDRESS } from '../config/contracts'
-import type { Envelope, Hex, PeerProfile } from '../lib/types'
+import type { Envelope, Hex, MsgPayload, PeerProfile, SwarmRef } from '../lib/types'
+import type { ChatMessage } from '../lib/messages-store'
 
 interface MessengerHandles {
   reliability: Reliability
   messages: IndexedDBMessages
   feedIdentity: { privateKey: Hex; address: Hex }
   resolvePeer: (wallet: Hex) => Promise<PeerProfile | null>
+  resolveMedia: MediaResolver
   send: (to: Hex, text: string) => Promise<void>
+  sendFile: (to: Hex, file: File) => Promise<void>
 }
 
 interface MessengerContextValue {
@@ -32,6 +37,41 @@ interface MessengerContextValue {
 const Ctx = createContext<MessengerContextValue | null>(null)
 
 const FEED_CACHE_KEY = (wallet: string) => `swarmchat:feed:${wallet.toLowerCase()}`
+
+/** Coerce inbound envelope payload to a ChatMessage row. Tolerates legacy { text } shape. */
+function payloadToChatMessage(env: Envelope, peer: Hex, direction: 'in' | 'out'): ChatMessage | null {
+  const p = env.payload as MsgPayload | { text?: string } | undefined
+  if (!p) return null
+  const base = { msgId: env.msgId, peer, direction, ts: env.ts } as const
+
+  if ('kind' in p) {
+    if (p.kind === 'text') return { ...base, kind: 'text', text: p.text }
+    if (p.kind === 'image' || p.kind === 'video' || p.kind === 'file') {
+      return {
+        ...base,
+        kind: p.kind,
+        ref: p.ref,
+        mime: p.mime,
+        size: p.size,
+        name: 'name' in p ? p.name : undefined,
+        w: 'w' in p ? p.w : undefined,
+        h: 'h' in p ? p.h : undefined,
+        durationMs: 'durationMs' in p ? p.durationMs : undefined,
+      } as ChatMessage
+    }
+  }
+  // Legacy { text } shape from earlier builds.
+  if (typeof (p as { text?: string }).text === 'string') {
+    return { ...base, kind: 'text', text: (p as { text: string }).text }
+  }
+  return null
+}
+
+function uploadResultToPayload(u: UploadResult): MsgPayload {
+  if (u.kind === 'image') return { kind: 'image', ref: u.ref, mime: u.mime, size: u.size, name: u.name, w: u.w, h: u.h }
+  if (u.kind === 'video') return { kind: 'video', ref: u.ref, mime: u.mime, size: u.size, name: u.name, durationMs: u.durationMs }
+  return { kind: 'file', ref: u.ref, mime: u.mime, size: u.size, name: u.name }
+}
 
 export function MessengerProvider({ children }: { children: ReactNode }) {
   const { address } = useAccount()
@@ -98,6 +138,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
 
     const outbox = new IndexedDBOutbox({ dbName: `swarmchat-outbox-${address.toLowerCase()}` })
     const messages = new IndexedDBMessages({ dbName: `swarmchat-messages-${address.toLowerCase()}` })
+    const resolveMedia = new MediaResolver(bee.writer)
 
     const transport = new Transport({
       bee: bee.writer,
@@ -124,27 +165,30 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
     // Inbound: persist + reflect in UI.
     reliability.onIncomingMessage(async (env: Envelope) => {
       if (env.type !== 'msg') return
-      const text = (env.payload as { text?: string })?.text ?? ''
+      const msg = payloadToChatMessage(env, env.from as Hex, 'in')
+      if (!msg) return
+      // remember the peer the first time we see them
       const lower = (env.from.toLowerCase() as Hex)
-      // remember the peer's feedOwner the first time we see it
       if (!peerCacheRef.current.has(lower)) {
-        // Don't block on the registry lookup; the messages list does not need it.
         resolvePeer(env.from as Hex).catch(() => {})
       }
-      await messages.put({
-        msgId: env.msgId,
-        peer: env.from as Hex,
-        direction: 'in',
-        text,
-        ts: env.ts,
-      })
+      await messages.put(msg)
     })
 
     // Outbound status changes (sent → delivered → read → failed).
     reliability.onStatus(entry => {
       if (entry.envelope.type !== 'msg') return
-      messages.updateStatus(entry.envelope.msgId, entry.status === 'pending' ? 'sent' : entry.status).catch(() => {})
+      const next = entry.status === 'pending' ? 'sent' : entry.status
+      messages.updateStatus(entry.envelope.msgId, next).catch(() => {})
     })
+
+    const sendPayload = async (to: Hex, payload: MsgPayload, clientRow: ChatMessage) => {
+      const peer = await resolvePeer(to)
+      if (!peer) throw new Error(`peer ${to} is not registered`)
+      const entry = await reliability.send({ to: peer, type: 'msg', payload })
+      const persisted: ChatMessage = { ...clientRow, msgId: entry.envelope.msgId, ts: entry.envelope.ts, status: 'sent' }
+      await messages.put(persisted)
+    }
 
     reliability.start().then(() => {
       if (cancelled) return
@@ -153,22 +197,33 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
         messages,
         feedIdentity,
         resolvePeer,
+        resolveMedia,
         send: async (to, text) => {
-          const peer = await resolvePeer(to)
-          if (!peer) throw new Error(`peer ${to} is not registered`)
-          const entry = await reliability.send({
-            to: peer,
-            type: 'msg',
-            payload: { text },
-          })
-          await messages.put({
-            msgId: entry.envelope.msgId,
-            peer: to,
-            direction: 'out',
-            text,
-            ts: entry.envelope.ts,
+          const stub: ChatMessage = {
+            msgId: ('0x' + '0'.repeat(64)) as Hex, // overwritten with real msgId in sendPayload
+            peer: to, direction: 'out', ts: Date.now(), kind: 'text', text, status: 'sent',
+          }
+          await sendPayload(to, { kind: 'text', text }, stub)
+        },
+        sendFile: async (to, file) => {
+          if (!bee.batchId) throw new Error('no postage stamp selected')
+          const upload = await uploadMedia(bee.writer, bee.batchId, file)
+          const payload = uploadResultToPayload(upload)
+          const kind = classifyMime(upload.mime)
+          const stub: ChatMessage = {
+            msgId: ('0x' + '0'.repeat(64)) as Hex,
+            peer: to, direction: 'out', ts: Date.now(),
+            kind,
+            ref: upload.ref as SwarmRef,
+            mime: upload.mime,
+            size: upload.size,
+            name: upload.name,
+            w: upload.w,
+            h: upload.h,
+            durationMs: upload.durationMs,
             status: 'sent',
-          })
+          } as ChatMessage
+          await sendPayload(to, payload, stub)
         },
       })
       setStatus('ready')
@@ -180,6 +235,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
       reliability.stop()
+      resolveMedia.dispose()
       messages.close().catch(() => {})
       outbox.close().catch(() => {})
     }

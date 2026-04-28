@@ -1,5 +1,6 @@
 import { Link, NavLink, useLocation } from 'react-router'
 import { useConversations } from '../hooks/useConversations'
+import { previewOf } from '../lib/messages-store'
 import EnsName from './EnsName'
 
 function formatRelative(ts: number): string {
@@ -61,7 +62,7 @@ export default function Sidebar() {
                       </div>
                       <div className="text-xs text-[#a39690] truncate">
                         {c.lastMessage.direction === 'out' ? 'You: ' : ''}
-                        {c.lastMessage.text}
+                        {previewOf(c.lastMessage)}
                       </div>
                     </div>
                   </Link>

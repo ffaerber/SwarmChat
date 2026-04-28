@@ -10,6 +10,19 @@ export type EnvelopeType =
   | 'ice'
   | 'call-hangup'
 
+/** A Swarm reference. 32-byte hash for plain uploads or 64-byte hash+key for encrypted ones. */
+export type SwarmRef = `0x${string}`
+
+export type MsgPayload =
+  | { kind: 'text'; text: string }
+  | { kind: 'image'; ref: SwarmRef; mime: string; size: number; name?: string; w?: number; h?: number }
+  | { kind: 'video'; ref: SwarmRef; mime: string; size: number; name?: string; durationMs?: number }
+  | { kind: 'file';  ref: SwarmRef; mime: string; size: number; name: string }
+
+/** Older clients sent { text } at the top of payload without `kind`. Accept both. */
+export type LegacyTextPayload = { text: string }
+
+
 export interface UnsignedEnvelope {
   v: 1
   type: EnvelopeType
