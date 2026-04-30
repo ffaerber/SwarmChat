@@ -1,21 +1,28 @@
 @import "tailwindcss";
 
+/*
+ * Swarm-inspired warm dark theme.
+ * Accent = Swarm orange (#ff7a00).
+ */
 @theme {
-  --color-bg: #0f1419;
-  --color-surface: #161c22;
-  --color-card: #1c2329;
-  --color-border: #252d34;
-  --color-tag: #2a333b;
-  --color-accent: #25d366;
-  --color-accent-soft: #128c7e;
-  --color-text: #e8eef2;
-  --color-muted: #8a97a3;
-  --color-subtle: #b5c1cc;
+  --color-bg: #0d0a08;
+  --color-surface: #18130f;
+  --color-card: #221b16;
+  --color-border: #2e261f;
+  --color-tag: #38302a;
+  --color-accent: #ff7a00;
+  --color-accent-soft: #cc6200;
+  --color-accent-deep: #8a4400;
+  --color-text: #f5ede4;
+  --color-muted: #a39690;
+  --color-subtle: #c4b8ae;
 }
 
 body {
-  background-color: #0f1419;
-  color: #e8eef2;
-  font-family: sans-serif;
+  background-color: #0d0a08;
+  color: #f5ede4;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
   font-size: 14px;
 }
