@@ -13,6 +13,8 @@ import ChatList from './components/ChatList'
 import Conversation from './components/Conversation'
 import Directory from './components/Directory'
 import Modal from './components/Modal'
+import IncomingCallModal from './components/IncomingCallModal'
+import CallView from './components/CallView'
 
 const queryClient = new QueryClient()
 
@@ -39,6 +41,8 @@ function AppContent() {
           </div>
         </div>
         {modalOpen && <Modal handleClose={() => setModalOpen(false)} />}
+        <IncomingCallModal />
+        <CallView />
         <Toaster
           position="bottom-right"
           toastOptions={{

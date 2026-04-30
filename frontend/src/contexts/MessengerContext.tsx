@@ -9,6 +9,7 @@ import { IndexedDBMessages } from '../lib/idb-messages'
 import { deriveFeedKey } from '../lib/feed-key'
 import { uploadMedia, MediaResolver, classifyMime } from '../lib/media'
 import type { UploadResult } from '../lib/media'
+import { CallManager } from '../lib/calls'
 import { useBeeContext } from '../hooks/BeeContext'
 import { CONTACT_REGISTRY_ABI, CONTACT_REGISTRY_ADDRESS } from '../config/contracts'
 import type { Envelope, Hex, MsgPayload, PeerProfile, SwarmRef } from '../lib/types'
@@ -20,6 +21,7 @@ interface MessengerHandles {
   feedIdentity: { privateKey: Hex; address: Hex }
   resolvePeer: (wallet: Hex) => Promise<PeerProfile | null>
   resolveMedia: MediaResolver
+  calls: CallManager
   send: (to: Hex, text: string) => Promise<void>
   sendFile: (to: Hex, file: File) => Promise<void>
 }
@@ -162,12 +164,22 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       resolveProfile: w => resolvePeer(w as Hex),
     })
 
-    // Inbound: persist + reflect in UI.
+    const calls = new CallManager({
+      send: (peer, type, payload) =>
+        reliability.send({ to: peer, type, payload }).then(() => undefined),
+      resolvePeer: w => resolvePeer(w as Hex),
+    })
+
+    // Inbound: persist + reflect in UI; also dispatch call signaling.
     reliability.onIncomingMessage(async (env: Envelope) => {
+      if (env.type === 'call-offer' || env.type === 'call-answer'
+          || env.type === 'ice'    || env.type === 'call-hangup') {
+        calls.handleSignaling(env).catch(err => console.error('call signaling', err))
+        return
+      }
       if (env.type !== 'msg') return
       const msg = payloadToChatMessage(env, env.from as Hex, 'in')
       if (!msg) return
-      // remember the peer the first time we see them
       const lower = (env.from.toLowerCase() as Hex)
       if (!peerCacheRef.current.has(lower)) {
         resolvePeer(env.from as Hex).catch(() => {})
@@ -198,6 +210,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
         feedIdentity,
         resolvePeer,
         resolveMedia,
+        calls,
         send: async (to, text) => {
           const stub: ChatMessage = {
             msgId: ('0x' + '0'.repeat(64)) as Hex, // overwritten with real msgId in sendPayload
@@ -234,6 +247,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true
+      calls.hangup('cleanup').catch(() => {})
       reliability.stop()
       resolveMedia.dispose()
       messages.close().catch(() => {})

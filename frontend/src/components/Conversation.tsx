@@ -142,6 +142,31 @@ export default function Conversation() {
             {peer.slice(0, 6)}...{peer.slice(-4)}
           </div>
         </div>
+        <button
+          onClick={() => handles?.resolvePeer(peer)
+            .then(p => p && handles.calls.startCall(p, 'audio'))
+            .catch(err => toast.error(`call failed: ${String(err)}`))}
+          disabled={!ready}
+          aria-label="audio call"
+          className="h-9 w-9 flex items-center justify-center rounded-full text-[#a39690] hover:text-[#ff7a00] hover:bg-[#221b16] cursor-pointer disabled:opacity-40"
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
+        </button>
+        <button
+          onClick={() => handles?.resolvePeer(peer)
+            .then(p => p && handles.calls.startCall(p, 'video'))
+            .catch(err => toast.error(`call failed: ${String(err)}`))}
+          disabled={!ready}
+          aria-label="video call"
+          className="h-9 w-9 flex items-center justify-center rounded-full text-[#a39690] hover:text-[#ff7a00] hover:bg-[#221b16] cursor-pointer disabled:opacity-40"
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+          </svg>
+        </button>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#0d0a08]">
