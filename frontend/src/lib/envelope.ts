@@ -63,6 +63,8 @@ export interface BuildEnvelopeArgs {
   payload: unknown
   ts?: number
   nonce?: Hex
+  /** Optional group identifier; included in the signed body when set. */
+  groupId?: Hex
 }
 
 export async function signEnvelope(args: BuildEnvelopeArgs, signMessage: SignMessage): Promise<Envelope> {
@@ -70,6 +72,8 @@ export async function signEnvelope(args: BuildEnvelopeArgs, signMessage: SignMes
   const nonce = args.nonce ?? randomNonce()
   const msgId = makeMsgId(args.from, nonce, ts)
 
+  // Spread groupId only when defined — canonicalize would otherwise fail
+  // on `undefined`, and v1 receivers would see a spurious key.
   const unsigned: UnsignedEnvelope = {
     v: PROTOCOL_VERSION,
     type: args.type,
@@ -80,6 +84,7 @@ export async function signEnvelope(args: BuildEnvelopeArgs, signMessage: SignMes
     ts,
     nonce,
     payload: args.payload,
+    ...(args.groupId !== undefined ? { groupId: args.groupId } : {}),
   }
   const sig = await signMessage(canonicalize(unsigned))
   return { ...unsigned, sig }

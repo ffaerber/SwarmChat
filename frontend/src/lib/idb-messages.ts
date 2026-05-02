@@ -2,6 +2,7 @@ import type { Hex } from './types'
 import type {
   ChatMessage,
   ConversationSummary,
+  GroupConversationSummary,
   MessageStatus,
   MessagesStore,
 } from './messages-store'
@@ -14,7 +15,8 @@ export interface IndexedDBMessagesOptions {
 
 const DEFAULT_DB = 'swarmchat-messages'
 const DEFAULT_STORE = 'messages'
-const DB_VERSION = 1
+/** v2 adds a `groupKey` index for group conversation lookups. */
+const DB_VERSION = 2
 
 export class IndexedDBMessages implements MessagesStore {
   private readonly dbName: string
@@ -42,7 +44,7 @@ export class IndexedDBMessages implements MessagesStore {
     const db = await this.db()
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readwrite')
-      tx.objectStore(this.storeName).put({ ...msg, peerKey: msg.peer.toLowerCase() })
+      tx.objectStore(this.storeName).put(this.toRow(msg))
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
@@ -56,14 +58,23 @@ export class IndexedDBMessages implements MessagesStore {
       const store = tx.objectStore(this.storeName)
       const getReq = store.get(msgId)
       getReq.onsuccess = () => {
-        const cur = getReq.result as (ChatMessage & { peerKey?: string }) | undefined
+        const cur = getReq.result as (ChatMessage & { peerKey?: string; groupKey?: string }) | undefined
         if (!cur) return
-        store.put({ ...cur, status, peerKey: cur.peer.toLowerCase() })
+        store.put(this.toRow({ ...cur, status }))
       }
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
     this.emit()
+  }
+
+  private toRow(msg: ChatMessage): ChatMessage & { peerKey: string; groupKey: string } {
+    return {
+      ...msg,
+      peerKey: msg.peer.toLowerCase(),
+      // Indexed booleans are tricky in IDB; use a sentinel string for "no group".
+      groupKey: msg.groupId ? msg.groupId.toLowerCase() : '',
+    }
   }
 
   async listForPeer(peer: Hex, limit?: number): Promise<ChatMessage[]> {
@@ -77,7 +88,29 @@ export class IndexedDBMessages implements MessagesStore {
         const cursor = req.result
         if (!cursor) return
         const v = cursor.value as ChatMessage
-        out.push(v)
+        // Only include 1:1 messages here; group messages have their own list.
+        if (!v.groupId) out.push(v)
+        cursor.continue()
+      }
+      req.onerror = () => reject(req.error)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    out.sort((a, b) => a.ts - b.ts)
+    return limit ? out.slice(-limit) : out
+  }
+
+  async listForGroup(groupId: Hex, limit?: number): Promise<ChatMessage[]> {
+    const db = await this.db()
+    const out: ChatMessage[] = []
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(this.storeName, 'readonly')
+      const idx = tx.objectStore(this.storeName).index('groupKey')
+      const req = idx.openCursor(IDBKeyRange.only(groupId.toLowerCase()))
+      req.onsuccess = () => {
+        const cursor = req.result
+        if (!cursor) return
+        out.push(cursor.value as ChatMessage)
         cursor.continue()
       }
       req.onerror = () => reject(req.error)
@@ -98,10 +131,12 @@ export class IndexedDBMessages implements MessagesStore {
         const cursor = req.result
         if (!cursor) return
         const v = cursor.value as ChatMessage
-        const k = v.peer.toLowerCase()
-        const list = byPeer.get(k) ?? []
-        list.push(v)
-        byPeer.set(k, list)
+        if (!v.groupId) {
+          const k = v.peer.toLowerCase()
+          const list = byPeer.get(k) ?? []
+          list.push(v)
+          byPeer.set(k, list)
+        }
         cursor.continue()
       }
       req.onerror = () => reject(req.error)
@@ -112,6 +147,37 @@ export class IndexedDBMessages implements MessagesStore {
     for (const [, list] of byPeer) {
       list.sort((a, b) => a.ts - b.ts)
       out.push({ peer: list[0].peer, lastMessage: list[list.length - 1], unread: 0 })
+    }
+    out.sort((a, b) => b.lastMessage.ts - a.lastMessage.ts)
+    return out
+  }
+
+  async listGroupConversations(): Promise<GroupConversationSummary[]> {
+    const db = await this.db()
+    const byGroup = new Map<string, ChatMessage[]>()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(this.storeName, 'readonly')
+      const req = tx.objectStore(this.storeName).openCursor()
+      req.onsuccess = () => {
+        const cursor = req.result
+        if (!cursor) return
+        const v = cursor.value as ChatMessage
+        if (v.groupId) {
+          const k = v.groupId.toLowerCase()
+          const list = byGroup.get(k) ?? []
+          list.push(v)
+          byGroup.set(k, list)
+        }
+        cursor.continue()
+      }
+      req.onerror = () => reject(req.error)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    const out: GroupConversationSummary[] = []
+    for (const [, list] of byGroup) {
+      list.sort((a, b) => a.ts - b.ts)
+      out.push({ groupId: list[0].groupId as Hex, lastMessage: list[list.length - 1], unread: 0 })
     }
     out.sort((a, b) => b.lastMessage.ts - a.lastMessage.ts)
     return out
@@ -134,9 +200,16 @@ export class IndexedDBMessages implements MessagesStore {
         const open = this.idb.open(this.dbName, DB_VERSION)
         open.onupgradeneeded = () => {
           const db = open.result
-          if (!db.objectStoreNames.contains(this.storeName)) {
-            const store = db.createObjectStore(this.storeName, { keyPath: 'msgId' })
-            store.createIndex('peerKey', 'peerKey', { unique: false })
+          const tx = open.transaction!
+          const store = db.objectStoreNames.contains(this.storeName)
+            ? tx.objectStore(this.storeName)
+            : (() => {
+                const s = db.createObjectStore(this.storeName, { keyPath: 'msgId' })
+                s.createIndex('peerKey', 'peerKey', { unique: false })
+                return s
+              })()
+          if (!store.indexNames.contains('groupKey')) {
+            store.createIndex('groupKey', 'groupKey', { unique: false })
           }
         }
         open.onsuccess = () => resolve(open.result)

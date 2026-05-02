@@ -40,6 +40,8 @@ export interface ReliabilitySendArgs {
   to: PeerProfile
   type: EnvelopeType
   payload: unknown
+  /** Optional group identifier propagated to the signed envelope. */
+  groupId?: Hex
 }
 
 export type StatusListener = (entry: OutboxEntry) => void
@@ -94,6 +96,7 @@ export class Reliability {
       to: args.to,
       type: args.type,
       payload: args.payload,
+      groupId: args.groupId,
     })
 
     // Mirror 'msg' envelopes to the outbox feed for offline recipients.

@@ -27,6 +27,9 @@ export interface SendArgs {
   to: PeerProfile
   type: EnvelopeType
   payload: unknown
+  /** Optional group context; tagged on the signed envelope so the
+   *  recipient can route it to a group conversation. */
+  groupId?: Hex
 }
 
 export interface SubscribeArgs {
@@ -66,6 +69,7 @@ export class Transport implements TransportLike {
         feedOwner: this.opts.selfFeedOwner,
         type: args.type,
         payload: args.payload,
+        groupId: args.groupId,
       },
       this.opts.signMessage,
     )

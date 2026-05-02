@@ -1,6 +1,10 @@
+import { useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
 import { useConversations } from '../hooks/useConversations'
+import { useGroups } from '../hooks/useGroups'
 import { previewOf } from '../lib/messages-store'
+import { useMessenger } from '../contexts/MessengerContext'
+import CreateGroupModal from './CreateGroupModal'
 import EnsName from './EnsName'
 
 function formatRelative(ts: number): string {
@@ -15,7 +19,10 @@ function formatRelative(ts: number): string {
 
 export default function Sidebar() {
   const conversations = useConversations()
+  const groups = useGroups()
   const location = useLocation()
+  const { ready } = useMessenger()
+  const [showCreateGroup, setShowCreateGroup] = useState(false)
 
   const tabClass = ({ isActive }: { isActive: boolean }) =>
     `flex-1 text-center text-sm py-2.5 border-b-2 transition-colors ${
@@ -31,10 +38,47 @@ export default function Sidebar() {
         <NavLink to="/directory" className={tabClass}>Directory</NavLink>
       </div>
 
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#2e261f]">
+        <span className="text-xs uppercase tracking-wider text-[#a39690]">Groups</span>
+        <button
+          onClick={() => setShowCreateGroup(true)}
+          disabled={!ready}
+          className="text-xs px-2 py-0.5 rounded text-[#ff7a00] hover:bg-[#221b16] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >+ New</button>
+      </div>
+
       <div className="flex-1 overflow-y-auto">
-        {conversations.length === 0 ? (
+        {groups.length > 0 && (
+          <ul>
+            {groups.map(g => {
+              const active = location.pathname === `/group/${g.id}`
+              return (
+                <li key={g.id}>
+                  <Link
+                    to={`/group/${g.id}`}
+                    className={`flex items-center gap-3 px-3 py-3 border-b border-[#2e261f] ${
+                      active ? 'bg-[#221b16]' : 'hover:bg-[#221b16]'
+                    }`}
+                  >
+                    <span className="h-10 w-10 flex-shrink-0 rounded-full bg-[#38302a] flex items-center justify-center text-[#ff7a00] font-semibold">
+                      #
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-[#f5ede4] truncate">{g.name}</div>
+                      <div className="text-xs text-[#a39690] truncate">
+                        {g.members.length} member{g.members.length === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        {conversations.length === 0 && groups.length === 0 ? (
           <div className="p-4 text-sm text-[#a39690]">
-            No conversations yet. Open the Directory and start one.
+            No conversations yet. Open the Directory and start one, or create a group.
           </div>
         ) : (
           <ul>
@@ -72,6 +116,8 @@ export default function Sidebar() {
           </ul>
         )}
       </div>
+
+      {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
     </aside>
   )
 }
