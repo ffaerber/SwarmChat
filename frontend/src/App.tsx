@@ -11,6 +11,7 @@ import Nav from './components/Nav'
 import Sidebar from './components/Sidebar'
 import ChatList from './components/ChatList'
 import Conversation from './components/Conversation'
+import GroupConversation from './components/GroupConversation'
 import Directory from './components/Directory'
 import Modal from './components/Modal'
 import IncomingCallModal from './components/IncomingCallModal'
@@ -36,6 +37,7 @@ function AppContent() {
                 <Route path="/" element={<ChatList />} />
                 <Route path="/directory" element={<Directory />} />
                 <Route path="/chat/:peer" element={<Conversation />} />
+                <Route path="/group/:id" element={<GroupConversation />} />
               </Routes>
             </main>
           </div>

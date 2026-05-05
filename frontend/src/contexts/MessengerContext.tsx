@@ -6,24 +6,32 @@ import { Reliability } from '../lib/reliability'
 import { Feeds } from '../lib/feeds'
 import { IndexedDBOutbox } from '../lib/idb-outbox'
 import { IndexedDBMessages } from '../lib/idb-messages'
+import { IndexedDBGroups, makeGroupId, randomGroupNonce } from '../lib/groups-store'
 import { deriveFeedKey } from '../lib/feed-key'
 import { uploadMedia, MediaResolver, classifyMime } from '../lib/media'
 import type { UploadResult } from '../lib/media'
 import { CallManager } from '../lib/calls'
 import { useBeeContext } from '../hooks/BeeContext'
 import { CONTACT_REGISTRY_ABI, CONTACT_REGISTRY_ADDRESS } from '../config/contracts'
-import type { Envelope, Hex, MsgPayload, PeerProfile, SwarmRef } from '../lib/types'
+import type { Envelope, Group, Hex, MsgPayload, PeerProfile, SwarmRef } from '../lib/types'
 import type { ChatMessage } from '../lib/messages-store'
 
 interface MessengerHandles {
   reliability: Reliability
   messages: IndexedDBMessages
+  groups: IndexedDBGroups
   feedIdentity: { privateKey: Hex; address: Hex }
   resolvePeer: (wallet: Hex) => Promise<PeerProfile | null>
   resolveMedia: MediaResolver
   calls: CallManager
   send: (to: Hex, text: string) => Promise<void>
   sendFile: (to: Hex, file: File) => Promise<void>
+  /** Create a group (off-chain), persist locally, fan out group/state to members. */
+  createGroup: (name: string, members: Hex[]) => Promise<Group>
+  /** Send a text message to every member of a group (excluding self). */
+  sendToGroup: (groupId: Hex, text: string) => Promise<void>
+  /** Send a file to every member of a group (excluding self). */
+  sendFileToGroup: (groupId: Hex, file: File) => Promise<void>
 }
 
 interface MessengerContextValue {
@@ -44,7 +52,13 @@ const FEED_CACHE_KEY = (wallet: string) => `swarmchat:feed:${wallet.toLowerCase(
 function payloadToChatMessage(env: Envelope, peer: Hex, direction: 'in' | 'out'): ChatMessage | null {
   const p = env.payload as MsgPayload | { text?: string } | undefined
   if (!p) return null
-  const base = { msgId: env.msgId, peer, direction, ts: env.ts } as const
+  const base = {
+    msgId: env.msgId,
+    peer,
+    direction,
+    ts: env.ts,
+    ...(env.groupId ? { groupId: env.groupId } : {}),
+  } as const
 
   if ('kind' in p) {
     if (p.kind === 'text') return { ...base, kind: 'text', text: p.text }
@@ -67,6 +81,14 @@ function payloadToChatMessage(env: Envelope, peer: Hex, direction: 'in' | 'out')
     return { ...base, kind: 'text', text: (p as { text: string }).text }
   }
   return null
+}
+
+/** Returns true iff the payload is a group/state control message. */
+function isGroupStatePayload(payload: unknown): payload is { kind: 'group/state'; group: Group } {
+  return !!payload
+    && typeof payload === 'object'
+    && (payload as { kind?: unknown }).kind === 'group/state'
+    && !!(payload as { group?: unknown }).group
 }
 
 function uploadResultToPayload(u: UploadResult): MsgPayload {
@@ -140,6 +162,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
 
     const outbox = new IndexedDBOutbox({ dbName: `swarmchat-outbox-${address.toLowerCase()}` })
     const messages = new IndexedDBMessages({ dbName: `swarmchat-messages-${address.toLowerCase()}` })
+    const groups = new IndexedDBGroups({ dbName: `swarmchat-groups-${address.toLowerCase()}` })
     const resolveMedia = new MediaResolver(bee.writer)
 
     const transport = new Transport({
@@ -178,6 +201,11 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
         return
       }
       if (env.type !== 'msg') return
+      // Group control messages: update the local groups store, don't show in chat.
+      if (isGroupStatePayload(env.payload)) {
+        try { await groups.put(env.payload.group) } catch (err) { console.error('group/state', err) }
+        return
+      }
       const msg = payloadToChatMessage(env, env.from as Hex, 'in')
       if (!msg) return
       const lower = (env.from.toLowerCase() as Hex)
@@ -202,11 +230,73 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       await messages.put(persisted)
     }
 
+    /** Fan-out: encrypt and send the same payload to every member except self. */
+    const fanOutToGroup = async (group: Group, payload: unknown) => {
+      const me = address.toLowerCase()
+      const recipients = group.members.filter(m => m.toLowerCase() !== me)
+      const profiles = await Promise.all(recipients.map(m => resolvePeer(m)))
+      const live = profiles
+        .map((p, i) => ({ p, wallet: recipients[i] }))
+        .filter((x): x is { p: PeerProfile; wallet: Hex } => !!x.p)
+      const unreachable = recipients.length - live.length
+      if (unreachable > 0) {
+        console.warn(`group fan-out: ${unreachable}/${recipients.length} member(s) unreachable`)
+      }
+      const sends = live.map(({ p }) =>
+        reliability.send({ to: p, type: 'msg', payload, groupId: group.id })
+          .catch(err => { console.error('group fan-out send', err); return null })
+      )
+      return Promise.all(sends)
+    }
+
+    const sendGroupPayload = async (
+      groupId: Hex,
+      payload: MsgPayload,
+      clientRow: ChatMessage,
+    ) => {
+      const group = await groups.get(groupId)
+      if (!group) throw new Error(`unknown group ${groupId}`)
+      const results = await fanOutToGroup(group, payload)
+      // Use the first successful envelope's msgId/ts for the local row.
+      const first = results.find(r => r !== null)
+      const ts = first?.envelope.ts ?? Date.now()
+      const msgId = (first?.envelope.msgId ?? ('0x' + '0'.repeat(64))) as Hex
+      const persisted: ChatMessage = {
+        ...clientRow,
+        msgId,
+        ts,
+        peer: address as Hex,  // sender = self for outgoing
+        groupId,
+        status: 'sent',
+      }
+      await messages.put(persisted)
+    }
+
+    const createGroup = async (name: string, members: Hex[]): Promise<Group> => {
+      const me = address as Hex
+      const memberSet = new Map<string, Hex>()
+      memberSet.set(me.toLowerCase(), me)
+      for (const m of members) memberSet.set(m.toLowerCase(), m)
+      const group: Group = {
+        id: makeGroupId(me, randomGroupNonce()),
+        name: name.trim() || 'Untitled group',
+        members: [...memberSet.values()],
+        admin: me,
+        createdAt: Date.now(),
+        version: 1,
+      }
+      await groups.put(group)
+      // Fan-out group/state to every other member; admin already has it locally.
+      await fanOutToGroup(group, { kind: 'group/state', group })
+      return group
+    }
+
     reliability.start().then(() => {
       if (cancelled) return
       setHandles({
         reliability,
         messages,
+        groups,
         feedIdentity,
         resolvePeer,
         resolveMedia,
@@ -238,6 +328,43 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
           } as ChatMessage
           await sendPayload(to, payload, stub)
         },
+        createGroup,
+        sendToGroup: async (groupId, text) => {
+          const stub: ChatMessage = {
+            msgId: ('0x' + '0'.repeat(64)) as Hex, // overwritten in sendGroupPayload
+            peer: address as Hex,
+            direction: 'out',
+            ts: Date.now(),
+            kind: 'text',
+            text,
+            status: 'sent',
+            groupId,
+          }
+          await sendGroupPayload(groupId, { kind: 'text', text }, stub)
+        },
+        sendFileToGroup: async (groupId, file) => {
+          if (!bee.batchId) throw new Error('no postage stamp selected')
+          const upload = await uploadMedia(bee.writer, bee.batchId, file)
+          const payload = uploadResultToPayload(upload)
+          const kind = classifyMime(upload.mime)
+          const stub: ChatMessage = {
+            msgId: ('0x' + '0'.repeat(64)) as Hex,
+            peer: address as Hex,
+            direction: 'out',
+            ts: Date.now(),
+            kind,
+            ref: upload.ref as SwarmRef,
+            mime: upload.mime,
+            size: upload.size,
+            name: upload.name,
+            w: upload.w,
+            h: upload.h,
+            durationMs: upload.durationMs,
+            status: 'sent',
+            groupId,
+          } as ChatMessage
+          await sendGroupPayload(groupId, payload, stub)
+        },
       })
       setStatus('ready')
     }).catch(err => {
@@ -251,6 +378,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       reliability.stop()
       resolveMedia.dispose()
       messages.close().catch(() => {})
+      groups.close().catch(() => {})
       outbox.close().catch(() => {})
     }
   }, [address, walletClient, bee.isConnected, bee.batchId, bee.pssPublicKey, bee.swarmOverlay, feedIdentity, bee.writer])

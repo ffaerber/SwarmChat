@@ -22,6 +22,20 @@ export type MsgPayload =
 /** Older clients sent { text } at the top of payload without `kind`. Accept both. */
 export type LegacyTextPayload = { text: string }
 
+/** Off-chain group metadata. Distributed to members via `group/state` payloads. */
+export interface Group {
+  id: Hex
+  name: string
+  members: Hex[]
+  admin: Hex
+  createdAt: number
+  /** Bumped on every membership change so receivers can drop stale states. */
+  version: number
+}
+
+/** Control payload that informs a member of a group's current state. */
+export type GroupStatePayload = { kind: 'group/state'; group: Group }
+
 
 export interface UnsignedEnvelope {
   v: 1
@@ -35,6 +49,9 @@ export interface UnsignedEnvelope {
   ts: number
   nonce: Hex
   payload: unknown
+  /** Optional group identifier. Present for group fan-out messages so
+   *  recipients can route them to the correct group conversation. */
+  groupId?: Hex
 }
 
 export interface Envelope extends UnsignedEnvelope {

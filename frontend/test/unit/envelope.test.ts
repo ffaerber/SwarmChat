@@ -118,4 +118,57 @@ describe('signEnvelope / verifyEnvelope', () => {
 
     expect(a.sig).not.toBe(b.sig)
   })
+
+  it('round-trips a groupId in the signed body', async () => {
+    const groupId: Hex = ('0x' + 'aa'.repeat(32)) as Hex
+    const env = await signEnvelope(
+      {
+        from: alice.address,
+        to: bob.address,
+        feedOwner: ALICE_FEED,
+        type: 'msg',
+        payload: { kind: 'text', text: 'hi group' },
+        groupId,
+      },
+      aliceSign,
+    )
+    expect(env.groupId).toBe(groupId)
+    expect(await verifyEnvelope(env)).toBe(true)
+  })
+
+  it('rejects a tampered groupId', async () => {
+    const groupId: Hex = ('0x' + 'aa'.repeat(32)) as Hex
+    const env = await signEnvelope(
+      { from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: {}, groupId },
+      aliceSign,
+    )
+    const tampered = { ...env, groupId: ('0x' + 'bb'.repeat(32)) as Hex }
+    expect(await verifyEnvelope(tampered)).toBe(false)
+  })
+
+  it('omits groupId from the signed body when not provided', async () => {
+    const env = await signEnvelope(
+      { from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: {} },
+      aliceSign,
+    )
+    expect('groupId' in env).toBe(false)
+    expect(await verifyEnvelope(env)).toBe(true)
+  })
+
+  it('groupId-bearing and groupId-less envelopes have different signatures', async () => {
+    const ts = 12345
+    const nonce: Hex = '0x' + '22'.repeat(16) as Hex
+    const without = await signEnvelope(
+      { from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: {}, ts, nonce },
+      aliceSign,
+    )
+    const withGroup = await signEnvelope(
+      {
+        from: alice.address, to: bob.address, feedOwner: ALICE_FEED, type: 'msg', payload: {}, ts, nonce,
+        groupId: ('0x' + 'cc'.repeat(32)) as Hex,
+      },
+      aliceSign,
+    )
+    expect(without.sig).not.toBe(withGroup.sig)
+  })
 })
