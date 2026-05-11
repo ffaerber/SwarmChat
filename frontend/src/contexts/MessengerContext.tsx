@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useAccount, usePublicClient, useWalletClient } from 'wagmi'
+import { useAccount, useConfig, usePublicClient, useWalletClient } from 'wagmi'
+import { getWalletClient } from '@wagmi/core'
 import { Transport } from '../lib/transport'
 import { Reliability } from '../lib/reliability'
 import { Feeds } from '../lib/feeds'
@@ -99,6 +100,7 @@ function uploadResultToPayload(u: UploadResult): MsgPayload {
 
 export function MessengerProvider({ children }: { children: ReactNode }) {
   const { address } = useAccount()
+  const wagmiConfig = useConfig()
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
   const bee = useBeeContext()
@@ -116,14 +118,17 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
     }
   }, [address])
 
-  const deriveAndStart = async () => {
+  const deriveAndStart = useCallback(async () => {
     if (!address) throw new Error('connect wallet first')
-    if (!walletClient) throw new Error('wallet client not ready')
+    // useWalletClient() can lag behind a successful writeContract in some injected
+    // providers (e.g. Freedom Browser); fetch on demand if the hook hasn't populated.
+    const wc = walletClient ?? await getWalletClient(wagmiConfig).catch(() => null)
+    if (!wc) throw new Error('wallet client not ready')
     setStatus('deriving feed key...')
-    const id = await deriveFeedKey(m => walletClient.signMessage({ message: m }))
+    const id = await deriveFeedKey(m => wc.signMessage({ message: m }))
     localStorage.setItem(FEED_CACHE_KEY(address), JSON.stringify(id))
     setFeedIdentity(id)
-  }
+  }, [address, walletClient, wagmiConfig])
 
   // Peer profile cache so we don't hit the contract on every send.
   const peerCacheRef = useRef(new Map<string, PeerProfile>())
@@ -385,7 +390,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<MessengerContextValue>(
     () => ({ ready: !!handles, status, deriveAndStart, handles }),
-    [handles, status],
+    [handles, status, deriveAndStart],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

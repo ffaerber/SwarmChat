@@ -13,9 +13,16 @@ docs/
 # Dotenv file
 .env
 
+# Claude Code per-project config
+.claude/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
 
 # Local dev
 contract-address.txt
+
+# One-off secrets (ENS commit-reveal nonces, etc.)
+.ens-secret.txt
+*-secret.txt

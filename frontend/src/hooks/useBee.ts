@@ -48,10 +48,19 @@ export function useBee() {
   useEffect(() => {
     if (!isConnected) return
     localBee.getNodeAddresses()
-      .then(addr => setNodeAddresses({
-        pssPublicKey: (addr as any).pssPublicKey ?? (addr as any).public_key,
-        overlay: (addr as any).overlay,
-      }))
+      .then(addr => {
+        const pss = (addr as any).pssPublicKey
+        const ov = (addr as any).overlay
+        setNodeAddresses({
+          // Contract requires 33-byte compressed secp256k1 key
+          pssPublicKey: typeof pss?.toCompressedHex === 'function'
+            ? pss.toCompressedHex()
+            : typeof pss === 'string' ? pss : undefined,
+          overlay: typeof ov?.toHex === 'function'
+            ? ov.toHex()
+            : typeof ov === 'string' ? ov : undefined,
+        })
+      })
       .catch(() => {})
   }, [localBee, isConnected])
 

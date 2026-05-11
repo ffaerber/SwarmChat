@@ -6,6 +6,13 @@ Identity is your Ethereum wallet. Discovery is a public on-chain registry (`Cont
 
 See [`swarmchat-spec.md`](./swarmchat-spec.md) for the full protocol specification.
 
+![demo](./demo.gif)
+
+## Live
+
+- **App:** `bzz://swarmchat.eth/` (in [Freedom Browser](https://freedombrowser.eth.limo/)) — or [swarmchat.eth.limo](https://swarmchat.eth.limo/) / [swarmchat.eth.link](https://swarmchat.eth.link/) via HTTPS gateway (read-only without a local Bee).
+- **Contract:** [`0x4F0Cb55E78D2a24f9aF01e96bc80833Dbb912B82`](https://gnosis.blockscout.com/address/0x4f0cb55e78d2a24f9af01e96bc80833dbb912b82) on Gnosis Chain (verified).
+
 ## Architecture
 
 - **Smart Contract**: Solidity 0.8.28, built with Foundry

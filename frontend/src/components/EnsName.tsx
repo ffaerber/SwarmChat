@@ -4,7 +4,7 @@ import { mainnet } from 'viem/chains'
 
 const ensClient = createPublicClient({
   chain: mainnet,
-  transport: http('https://eth.llamarpc.com'),
+  transport: http(import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-rpc.publicnode.com'),
 })
 
 const cache = new Map<string, string | null>()

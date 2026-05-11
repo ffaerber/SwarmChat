@@ -53,7 +53,7 @@ export default function Modal({ handleClose }: ModalProps) {
           <h3 className="text-base font-semibold text-[#f5ede4] mb-4">Setup</h3>
           <ul className="text-sm space-y-2">
             <li className="flex items-start gap-2">
-              <span className={isConnected ? 'text-[#ff7a00]' : 'text-red-500'}>{isConnected ? '+' : 'x'}</span>
+              <span className={isConnected ? 'text-green-500' : 'text-red-500'}>{isConnected ? '✓' : 'x'}</span>
               <div className="flex-1">
                 {isConnected ? (
                   <span className="text-[#f5ede4]">
@@ -70,7 +70,7 @@ export default function Modal({ handleClose }: ModalProps) {
             </li>
             <Check ok={!!hasXdai} label="xDAI funded" fail={<>No xDAI — get some at <a target="_blank" href="https://ramp.network/buy/" className="text-[#ff7a00] underline">ramp.network</a></>} />
             <li className="flex items-start gap-2">
-              <span className={beeConnected ? 'text-[#ff7a00]' : 'text-red-500'}>{beeConnected ? '+' : 'x'}</span>
+              <span className={beeConnected ? 'text-green-500' : 'text-red-500'}>{beeConnected ? '✓' : 'x'}</span>
               <div className="flex-1">
                 <span className={beeConnected ? 'text-[#f5ede4]' : 'text-[#a39690]'}>
                   {beeConnected ? 'Bee node running' : <>Install <a target="_blank" href="https://freedombrowser.eth.limo/" className="text-[#ff7a00] underline">Freedom Browser</a> or set URL</>}
@@ -90,7 +90,7 @@ export default function Modal({ handleClose }: ModalProps) {
             <li className="flex items-start gap-2">
               {allBatches.length > 0 ? (
                 <>
-                  <span className={batchId ? 'text-[#ff7a00]' : 'text-yellow-500'}>{batchId ? '+' : '!'}</span>
+                  <span className={batchId ? 'text-green-500' : 'text-yellow-500'}>{batchId ? '✓' : '!'}</span>
                   <div className="flex-1">
                     <select
                       value={batchId || ''}
@@ -166,7 +166,7 @@ export default function Modal({ handleClose }: ModalProps) {
 function Check({ ok, label, fail }: { ok: boolean, label: string, fail: React.ReactNode }) {
   return (
     <li className="flex items-start gap-2">
-      <span className={ok ? 'text-[#ff7a00]' : 'text-red-500'}>{ok ? '+' : 'x'}</span>
+      <span className={ok ? 'text-green-500' : 'text-red-500'}>{ok ? '✓' : 'x'}</span>
       <span className={ok ? 'text-[#f5ede4]' : 'text-[#a39690]'}>{ok ? label : fail}</span>
     </li>
   )

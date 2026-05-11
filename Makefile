@@ -10,6 +10,7 @@ LOCAL_RPC_URL  ?= http://localhost:8545
 ETH_RPC_URL    ?= https://cloudflare-eth.com
 ENS_NAME       ?= swarmchat.eth
 ENS_REGISTRY    = 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e
+MNEMONIC_INDEX ?= 0
 BATCH_ID       ?= $(shell curl -s $(BEE_API_URL)/stamps 2>/dev/null \
                    | python3 -c "import sys,json; s=json.load(sys.stdin).get('stamps',[]); print(s[0]['batchID'] if s else '')" 2>/dev/null)
 
@@ -118,6 +119,7 @@ deploy-contract: build ## Deploy contract to Gnosis Chain
 	forge script script/Deploy.s.sol:DeployScript \
 		--rpc-url $(RPC_URL) \
 		--mnemonics "$(MNEMONIC)" \
+		--mnemonic-indexes $(MNEMONIC_INDEX) \
 		--broadcast \
 		--verify \
 		--verifier blockscout \
@@ -129,6 +131,7 @@ deploy-contract-chiado: build ## Deploy contract to Chiado testnet
 	forge script script/Deploy.s.sol:DeployScript \
 		--rpc-url $(CHIADO_RPC_URL) \
 		--mnemonics "$(MNEMONIC)" \
+		--mnemonic-indexes $(MNEMONIC_INDEX) \
 		--broadcast
 
 .PHONY: deploy-contract-local
@@ -181,6 +184,7 @@ update-ens: ## Update ENS content hash on mainnet (SWARM_HASH=...)
 	cast send $$RESOLVER \
 		"setContenthash(bytes32,bytes)" $$NAMEHASH $$CONTENT_HASH \
 		--mnemonic "$(MNEMONIC)" \
+		--mnemonic-index $(MNEMONIC_INDEX) \
 		--rpc-url $(ETH_RPC_URL) && \
 	echo "" && \
 	echo "ENS updated! Live at:" && \
