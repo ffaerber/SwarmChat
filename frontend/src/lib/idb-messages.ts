@@ -152,6 +152,28 @@ export class IndexedDBMessages implements MessagesStore {
     return out
   }
 
+  async clearForPeer(peer: Hex): Promise<void> {
+    const db = await this.db()
+    const target = peer.toLowerCase()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(this.storeName, 'readwrite')
+      const store = tx.objectStore(this.storeName)
+      const req = store.index('peerKey').openCursor(IDBKeyRange.only(target))
+      req.onsuccess = () => {
+        const cursor = req.result
+        if (!cursor) return
+        const v = cursor.value as ChatMessage
+        // Only delete 1:1 rows; leave group rows intact even if peer matches.
+        if (!v.groupId) cursor.delete()
+        cursor.continue()
+      }
+      req.onerror = () => reject(req.error)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    this.emit()
+  }
+
   async listGroupConversations(): Promise<GroupConversationSummary[]> {
     const db = await this.db()
     const byGroup = new Map<string, ChatMessage[]>()

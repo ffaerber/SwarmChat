@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { CONTACT_REGISTRY_ABI, CONTACT_REGISTRY_ADDRESS } from '../config/contracts'
 import { useConversation } from '../hooks/useConversation'
 import { useMessenger } from '../contexts/MessengerContext'
+import { useBlocklist } from '../hooks/useBlocklist'
 import EnsName from './EnsName'
 import MediaBubble from './MediaBubble'
 import type { Hex } from '../lib/types'
@@ -54,8 +55,12 @@ export default function Conversation() {
   const peer = peerParam as Hex | undefined
   const { ready, handles } = useMessenger()
   const { messages, send } = useConversation(peer)
+  const { isBlocked, block, unblock } = useBlocklist()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const { data: profile } = useReadContract({
@@ -66,6 +71,19 @@ export default function Conversation() {
     query: { enabled: !!peer },
   })
   const displayName = Array.isArray(profile) ? (profile[0] as string) : ''
+  const pssPubkey = Array.isArray(profile) ? (profile[1] as Hex) : undefined
+  const swarmOverlay = Array.isArray(profile) ? (profile[2] as Hex) : undefined
+  const updatedAt = Array.isArray(profile) ? Number(profile[3] as bigint) : 0
+  const peerBlocked = peer ? isBlocked(peer) : false
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [menuOpen])
 
   const handleFiles = async (files: File[]) => {
     if (!peer || !handles || !files.length) return
@@ -120,6 +138,34 @@ export default function Conversation() {
     }
   }
 
+  const handleToggleBlock = async () => {
+    if (!peer) return
+    setMenuOpen(false)
+    try {
+      if (peerBlocked) {
+        await unblock(peer)
+        toast(`unblocked ${displayName || peer.slice(0, 8)}`)
+      } else {
+        await block(peer)
+        toast(`blocked ${displayName || peer.slice(0, 8)} — incoming messages will be dropped`)
+      }
+    } catch (err) {
+      toast.error(`failed: ${String(err)}`)
+    }
+  }
+
+  const handleClearChat = async () => {
+    if (!peer || !handles) return
+    setMenuOpen(false)
+    if (!confirm(`Delete all messages with ${displayName || peer.slice(0, 8)}? This only clears your local copy.`)) return
+    try {
+      await handles.messages.clearForPeer(peer)
+      toast('chat cleared')
+    } catch (err) {
+      toast.error(`clear failed: ${String(err)}`)
+    }
+  }
+
   return (
     <div {...getRootProps()} className="flex-1 flex flex-col relative outline-none">
       <input {...getInputProps()} />
@@ -167,7 +213,56 @@ export default function Conversation() {
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
           </svg>
         </button>
+
+        <div ref={menuRef} className="relative">
+          <button
+            onClick={() => setMenuOpen(o => !o)}
+            aria-label="conversation menu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="h-9 w-9 flex items-center justify-center rounded-full text-[#a39690] hover:text-[#ff7a00] hover:bg-[#221b16] cursor-pointer"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+              <circle cx="12" cy="5" r="1.6" />
+              <circle cx="12" cy="12" r="1.6" />
+              <circle cx="12" cy="19" r="1.6" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div role="menu" className="absolute right-0 top-10 z-20 w-52 bg-[#18130f] border border-[#2e261f] rounded shadow-lg py-1 text-sm">
+              <button
+                onClick={() => { setProfileOpen(o => !o); setMenuOpen(false) }}
+                className="w-full text-left px-3 py-1.5 text-[#f5ede4] hover:bg-[#221b16] cursor-pointer"
+              >
+                {profileOpen ? 'Hide profile' : 'View profile'}
+              </button>
+              <button
+                onClick={handleToggleBlock}
+                className="w-full text-left px-3 py-1.5 text-[#f5ede4] hover:bg-[#221b16] cursor-pointer"
+              >
+                {peerBlocked ? 'Unblock user' : 'Block user'}
+              </button>
+              <button
+                onClick={handleClearChat}
+                className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-[#221b16] cursor-pointer"
+              >
+                Clear chat history
+              </button>
+            </div>
+          )}
+        </div>
       </header>
+
+      {profileOpen && (
+        <div className="border-b border-[#2e261f] bg-[#18130f] px-4 py-3 text-xs text-[#a39690] space-y-1">
+          <div><span className="text-[#f5ede4] font-medium">{displayName || '(no display name)'}</span></div>
+          <div className="font-mono break-all">addr: {peer}</div>
+          {pssPubkey && <div className="font-mono break-all">pss:  {pssPubkey}</div>}
+          {swarmOverlay && <div className="font-mono break-all">overlay: {swarmOverlay}</div>}
+          {updatedAt > 0 && <div>updated: {new Date(updatedAt * 1000).toLocaleString()}</div>}
+          {peerBlocked && <div className="text-red-400">⚠ blocked — incoming messages dropped</div>}
+        </div>
+      )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#0d0a08]">
         {messages.length === 0 ? (

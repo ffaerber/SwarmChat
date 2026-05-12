@@ -36,6 +36,7 @@ export default function Sidebar() {
       <div className="flex">
         <NavLink to="/" end className={tabClass}>Chats</NavLink>
         <NavLink to="/directory" className={tabClass}>Directory</NavLink>
+        <NavLink to="/settings" className={tabClass}>Settings</NavLink>
       </div>
 
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#2e261f]">

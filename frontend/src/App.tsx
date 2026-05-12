@@ -13,6 +13,7 @@ import ChatList from './components/ChatList'
 import Conversation from './components/Conversation'
 import GroupConversation from './components/GroupConversation'
 import Directory from './components/Directory'
+import Settings from './components/Settings'
 import Modal from './components/Modal'
 import IncomingCallModal from './components/IncomingCallModal'
 import CallView from './components/CallView'
@@ -38,6 +39,7 @@ function AppContent() {
                 <Route path="/directory" element={<Directory />} />
                 <Route path="/chat/:peer" element={<Conversation />} />
                 <Route path="/group/:id" element={<GroupConversation />} />
+                <Route path="/settings" element={<Settings />} />
               </Routes>
             </main>
           </div>

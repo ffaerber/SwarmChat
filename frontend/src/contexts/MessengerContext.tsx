@@ -8,6 +8,7 @@ import { Feeds } from '../lib/feeds'
 import { IndexedDBOutbox } from '../lib/idb-outbox'
 import { IndexedDBMessages } from '../lib/idb-messages'
 import { IndexedDBGroups, makeGroupId, randomGroupNonce } from '../lib/groups-store'
+import { Blocklist } from '../lib/blocklist'
 import { deriveFeedKey } from '../lib/feed-key'
 import { uploadMedia, MediaResolver, classifyMime } from '../lib/media'
 import type { UploadResult } from '../lib/media'
@@ -21,6 +22,7 @@ interface MessengerHandles {
   reliability: Reliability
   messages: IndexedDBMessages
   groups: IndexedDBGroups
+  blocklist: Blocklist
   feedIdentity: { privateKey: Hex; address: Hex }
   resolvePeer: (wallet: Hex) => Promise<PeerProfile | null>
   resolveMedia: MediaResolver
@@ -168,6 +170,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
     const outbox = new IndexedDBOutbox({ dbName: `swarmchat-outbox-${address.toLowerCase()}` })
     const messages = new IndexedDBMessages({ dbName: `swarmchat-messages-${address.toLowerCase()}` })
     const groups = new IndexedDBGroups({ dbName: `swarmchat-groups-${address.toLowerCase()}` })
+    const blocklist = new Blocklist({ dbName: `swarmchat-blocklist-${address.toLowerCase()}` })
     const resolveMedia = new MediaResolver(bee.writer)
 
     const transport = new Transport({
@@ -176,6 +179,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       selfFeedOwner: feedIdentity.address,
       signMessage: m => walletClient.signMessage({ message: m }),
       postageBatchId: bee.batchId,
+      blocklist: blocklist.liveSet(),
     })
 
     const feeds = new Feeds({
@@ -296,12 +300,13 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       return group
     }
 
-    reliability.start().then(() => {
+    Promise.all([blocklist.load(), reliability.start()]).then(() => {
       if (cancelled) return
       setHandles({
         reliability,
         messages,
         groups,
+        blocklist,
         feedIdentity,
         resolvePeer,
         resolveMedia,
@@ -385,6 +390,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       messages.close().catch(() => {})
       groups.close().catch(() => {})
       outbox.close().catch(() => {})
+      blocklist.close().catch(() => {})
     }
   }, [address, walletClient, bee.isConnected, bee.batchId, bee.pssPublicKey, bee.swarmOverlay, feedIdentity, bee.writer])
 

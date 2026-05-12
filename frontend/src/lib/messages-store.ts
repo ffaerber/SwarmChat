@@ -62,6 +62,8 @@ export interface MessagesStore {
   listForGroup(groupId: Hex, limit?: number): Promise<ChatMessage[]>
   listConversations(): Promise<ConversationSummary[]>
   listGroupConversations(): Promise<GroupConversationSummary[]>
+  /** Delete all 1:1 messages with this peer. Group messages with the same peer are kept. */
+  clearForPeer(peer: Hex): Promise<void>
   /** A change-notification stream so React can refresh without polling. */
   subscribe(cb: () => void): () => void
 }
@@ -114,6 +116,14 @@ export class InMemoryMessages implements MessagesStore {
     }
     out.sort((a, b) => b.lastMessage.ts - a.lastMessage.ts)
     return out
+  }
+
+  async clearForPeer(peer: Hex): Promise<void> {
+    const target = peer.toLowerCase()
+    for (const [id, m] of this.byId) {
+      if (!m.groupId && m.peer.toLowerCase() === target) this.byId.delete(id)
+    }
+    this.emit()
   }
 
   async listGroupConversations(): Promise<GroupConversationSummary[]> {
